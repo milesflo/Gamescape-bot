@@ -7,14 +7,16 @@ const bot = new Discord.Client();
 const prefix = "!";
 // My ID :^)
 const master_id = "127060142935113728";
+const calendar_ids = require('./calendar_ids.json')
 
 let queue = {};
 
 //Dependencies
-const fs = require('fs');
-const child_process = require('child_process');
-const yt = require('ytdl-core');
-const d20 = require('d20');
+const fs                   = require('fs');
+const child_process        = require('child_process');
+const yt                   = require('ytdl-core');
+const d20                  = require('d20');
+const PublicGoogleCalendar = require('public-google-calendar');
 
 
 // //Knex database login
@@ -45,30 +47,51 @@ bot.timestamp = (msg) => {
 	return `[ ${new Date()} ] -`;
 }
 
-var getMethod = (argument) => {
+bot.getEvents = (calendarId)=> {
+	let GSCalendar = new PublicGoogleCalendar({ 
+		calendarId: calendarId
+	});
+	let tomorrow = new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
+	GSCalendar.getEvents({
+		endDate: tomorrow.getTime()
+	},(err,events)=> {
+		console.log(calendarId);
+		if (err) return console.log(err);
+		//chop down this astronomical array to length of 5, filter to see if it's today, then reverse it to be chronological.
+		let filtered = events.slice(0,4).filter(isToday).reverse()
+
+		console.log(filtered)
+	})
+}
+
+var isToday = (eventObj) => {
+	return (new Date().toDateString() === new Date(eventObj.start).toDateString())
+}
+
+var getMethod = (arg) => {
 	//Grab first word in a command
-	if(argument.indexOf(' ') != -1){
-		return argument.split(' ')[0];
+	if(arg.indexOf(' ') != -1){
+		return arg.split(' ')[0];
 	}else{
-		return argument;
+		return arg;
 	}
 }
 
-var getParameter = (argument) => {
-	return argument.substring(argument.indexOf(' ')+1, argument.length);
+var getParameter = (arg) => {
+	return arg.substring(arg.indexOf(' ')+1, arg.length);
 }
 
 
 const commands = {
 	'ping': {
-		process: (msg, argument) => {
+		process: (msg, arg) => {
 			msg.channel.sendMessage(msg.author + " pong!");
 			console.log(`${bot.timestamp()} ${msg.author.username} pinged the bot`);
 		},
 		description: "Check if the bot is online."
 	},
 	'help': {
-		process: (msg, argument) => {
+		process: (msg, arg) => {
 			let commandList = 'Available Commands:```'
 			for (cmd in commands) {
 				if (!commands[cmd].discrete) {
@@ -90,23 +113,30 @@ const commands = {
 		description: "Messages user list of commands"
 	},
 	'roll': {
-		process: (msg, argument) => {
-			valid = argument.replace(/[^d0-9\s\+\*\\\-]/g, "");
+		process: (msg, arg) => {
+			valid = arg.replace(/[^d0-9\s\+\*\\\-]/g, "");
 			output = d20.roll(valid, false);
 			msg.reply(output);
 		},
 		usage: "<d20 syntax>",
 		description: "Roll dice using d20 syntax"
 	},
+	'r': {
+		process: (msg, arg)=> {
+			commands.roll.process(msg,arg);
+			return;
+		},
+		description: "Shorthand of roll command"
+	},
 	'say': {
-		process: (msg, argument) => {
-			msg.channel.sendMessage(argument);
+		process: (msg, arg) => {
+			msg.channel.sendMessage(arg);
 		},
 		usage: "<string>",
 		description: "Make the bot say something"
 	},
 	'kill': {
-		process: (msg, argument) => {
+		process: (msg, arg) => {
 			if (msg.author.id === master_id) {
 				msg.channel.sendMessage("*Beep boop, click*").then(()=> {
 					console.log("Being shut down by " + msg.author.username);
@@ -120,13 +150,13 @@ const commands = {
 		discrete: true
 	},
 	'info': {
-		process: (msg,argument) => {
+		process: (msg,arg) => {
 			msg.channel.sendMessage("Bot courtesy of ");
 		},
 		description: "Credits for the bot."
 	},
 	'update': {
-		process: (msg,argument)=> {
+		process: (msg,arg)=> {
 			if (msg.author.id === master_id) {
 				msg.channel.sendMessage("fetching updates...").then(function(sentMsg){
 					console.log("updating...");
@@ -269,6 +299,10 @@ const commands = {
 bot.login(discord_auth.token);
 
 bot.on('ready', ()=> {
+	for (id in calendar_ids) {
+		bot.getEvents(calendar_ids[id])
+	}
+	
 	bot.user.setStatus(`online`,`Say ${prefix}help`)
 	.then((user)=> {
 		console.log(`${bot.timestamp()} Smonk Online\n---`)
@@ -289,9 +323,9 @@ bot.on('message', (msg) => {
 			//Get command to execute
 			let to_execute = command.split(prefix).slice(1).join().split(' ')[0];
 			//Get string after command
-			let argument = command.split(prefix).slice(1).join().split(' ').slice(1).join(" ");
+			let arg = command.split(prefix).slice(1).join().split(' ').slice(1).join(" ");
 			if (commands[to_execute]) {
-				commands[to_execute].process(msg, argument);
+				commands[to_execute].process(msg, arg);
 			}
 		}
 	}
