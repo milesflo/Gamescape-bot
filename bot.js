@@ -17,8 +17,8 @@ const child_process        = require('child_process');
 const yt                   = require('ytdl-core');
 const d20                  = require('d20');
 const PublicGoogleCalendar = require('public-google-calendar');
-const schedule             = require('node-schedule')
-
+const schedule             = require('node-schedule');
+const readline             = require('readline');
 
 // //Knex database login
 // const knex = require('knex')(require('./knexfile.js').development);
@@ -359,8 +359,8 @@ bot.on('ready', ()=> {
 				calendarId: calendar_ids[id]
 			});
 		}
-		process.stdout.clearLine()
-		process.stdout.cursorTo(0); 
+		readline.clearLine(process.stdout);
+		readline.cursorTo(process.stdout, 0);
 		process.stdout.write("Calendars files loaded.\n");
 	})()
 
