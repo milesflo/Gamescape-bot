@@ -63,15 +63,38 @@ bot.fetchTodayEvents = (calendarObj)=> {
 	})
 }
 
+bot.setTodayEvents = ()=> {
+		bot._today = []
+		var callstack = []
+		for (cal in bot._calendars) {
+			callstack.push(bot.fetchTodayEvents(bot._calendars[cal]))
+		}
+		Promise.all(callstack)
+		.then((allData)=> {
+			for (i in allData) {
+				if (allData[i].length>0) {
+					for ( j in allData[i] ) {
+						bot._today.push(allData[i][j])
+					}
+				}
+			}
+			var date = new Date()
+			console.log(`Calendar set for ${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}`)
+		})
+		.catch((err)=> {
+			console.log(err);
+		})
+	}
+
 const isToday = (eventObj) => {
 	return (new Date().toDateString() === new Date(eventObj.start).toDateString())
 }
 
 const getMethod = (arg) => {
 	//Grab first word in a command
-	if(arg.indexOf(' ') != -1){
+	if (arg.indexOf(' ') != -1) {
 		return arg.split(' ')[0];
-	}else{
+	} else {
 		return arg;
 	}
 }
@@ -81,14 +104,14 @@ const getParameter = (arg) => {
 }
 
 const formatAMPM = (date) => {
-  var hours = date.getHours();
-  var minutes = date.getMinutes();
-  var ampm = hours >= 12 ? 'pm' : 'am';
-  hours = hours % 12;
-  hours = hours ? hours : 12; // the hour '0' should be '12'
-  minutes = minutes < 10 ? '0'+minutes : minutes;
-  var strTime = hours + ':' + minutes + ' ' + ampm;
-  return strTime;
+	var hours = date.getHours();
+	var minutes = date.getMinutes();
+	var ampm = hours >= 12 ? 'pm' : 'am';
+	hours = hours % 12;
+	hours = hours ? hours : 12; // the hour '0' should be '12'
+	minutes = minutes < 10 ? '0'+minutes : minutes;
+	var strTime = hours + ':' + minutes + ' ' + ampm;
+	return strTime;
 }
 
 
@@ -341,30 +364,11 @@ bot.on('ready', ()=> {
 		process.stdout.write("Calendars files loaded.\n");
 	})()
 
-
-	bot.setTodayEvents = ()=> {
-		bot._today = []
-		var callstack = []
-		for (cal in bot._calendars) {
-			callstack.push(bot.fetchTodayEvents(bot._calendars[cal]))
-		}
-		Promise.all(callstack)
-		.then((allData)=> {
-			for (i in allData) {
-				if (allData[i].length>0) {
-					for ( j in allData[i] ) {
-						bot._today.push(allData[i][j])
-					}
-				}
-			}
-			var date = new Date()
-			console.log(`Calendar for ${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()} complete.`)
-		})
-		.catch((err)=> {
-			console.log(err);
-		})
-	}
 	bot.setTodayEvents()
+
+	var calRefreshJob = schedule.scheduleJob('* 0 * * *', function(){
+		bot.setTodayEvents();
+	});
 
 	bot.user.setStatus(`online`,`Say ${prefix}help`)
 	.then((user)=> {
