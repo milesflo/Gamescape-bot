@@ -17,6 +17,7 @@ const child_process        = require('child_process');
 const yt                   = require('ytdl-core');
 const d20                  = require('d20');
 const PublicGoogleCalendar = require('public-google-calendar');
+const schedule             = require('node-schedule')
 
 
 // //Knex database login
@@ -47,28 +48,26 @@ bot.timestamp = (msg) => {
 	return `[ ${new Date()} ] -`;
 }
 
-bot.getEvents = (calendarId)=> {
-	let GSCalendar = new PublicGoogleCalendar({ 
-		calendarId: calendarId
-	});
-	let tomorrow = new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
-	GSCalendar.getEvents({
-		endDate: tomorrow.getTime()
-	},(err,events)=> {
-		console.log(calendarId);
-		if (err) return console.log(err);
-		//chop down this astronomical array to length of 5, filter to see if it's today, then reverse it to be chronological.
-		let filtered = events.slice(0,4).filter(isToday).reverse()
-
-		console.log(filtered)
+//return array of Google Calendar objects 
+bot.fetchTodayEvents = (calendarObj)=> {
+	return new Promise (function(resolve,reject) {
+		let tomorrow = new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
+		calendarObj.getEvents({
+			endDate: tomorrow.getTime()
+		},(err,events)=> {
+			if (err) return reject(err);
+			//chop down this astronomical array to length of 5, filter to see if it's today, then reverse it to be chronological.
+			let filtered = events.slice(0,4).filter(isToday).reverse();
+			return resolve(filtered);
+		})
 	})
 }
 
-var isToday = (eventObj) => {
+const isToday = (eventObj) => {
 	return (new Date().toDateString() === new Date(eventObj.start).toDateString())
 }
 
-var getMethod = (arg) => {
+const getMethod = (arg) => {
 	//Grab first word in a command
 	if(arg.indexOf(' ') != -1){
 		return arg.split(' ')[0];
@@ -77,8 +76,19 @@ var getMethod = (arg) => {
 	}
 }
 
-var getParameter = (arg) => {
+const getParameter = (arg) => {
 	return arg.substring(arg.indexOf(' ')+1, arg.length);
+}
+
+const formatAMPM = (date) => {
+  var hours = date.getHours();
+  var minutes = date.getMinutes();
+  var ampm = hours >= 12 ? 'pm' : 'am';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // the hour '0' should be '12'
+  minutes = minutes < 10 ? '0'+minutes : minutes;
+  var strTime = hours + ':' + minutes + ' ' + ampm;
+  return strTime;
 }
 
 
@@ -293,16 +303,69 @@ const commands = {
 		description: "View music queue.",
 		discrete: true
 	},
+	'schedule': {
+		process: (msg, arg) => {
+			if (bot._today.length===0) {
+				// msg.channel.sendMessage("No events today.")
+			} else {
+				var date = new Date()
+				var response = `Calendar for ${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}:\`\`\``
+				for (i in bot._today) {
+					response+=`\n${formatAMPM(new Date(bot._today[i].start))} ${bot._today[i].summary}`;
+				}
+				response+="```"
+				msg.channel.sendMessage(response)
+			}
+		},
+		description: "Get today's events at GS"
+	}
 }
 
 
 bot.login(discord_auth.token);
 
+bot._today;
+
 bot.on('ready', ()=> {
-	for (id in calendar_ids) {
-		bot.getEvents(calendar_ids[id])
+	//Self-invoking function to collect Google Calendar files onload
+	(function fetchCalendarFiles(){
+		process.stdout.write("Fetching calendar files...");
+		bot._calendars = {}
+		for (id in calendar_ids) {
+			bot._calendars[id] = new PublicGoogleCalendar({ 
+				calendarId: calendar_ids[id]
+			});
+		}
+		process.stdout.clearLine()
+		process.stdout.cursorTo(0); 
+		process.stdout.write("Calendars files loaded.\n");
+	})()
+
+
+	bot.setTodayEvents = ()=> {
+		bot._today = []
+		var callstack = []
+		for (cal in bot._calendars) {
+			callstack.push(bot.fetchTodayEvents(bot._calendars[cal]))
+		}
+		Promise.all(callstack)
+		.then((allData)=> {
+			for (i in allData) {
+				if (allData[i].length>0) {
+					for ( j in allData[i] ) {
+						bot._today.push(allData[i][j])
+					}
+				}
+			}
+			var date = new Date()
+			console.log(`Calendar for ${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()} complete.`)
+		})
+		.catch((err)=> {
+			console.log(err);
+		})
 	}
-	
+	bot.setTodayEvents()
+
 	bot.user.setStatus(`online`,`Say ${prefix}help`)
 	.then((user)=> {
 		console.log(`${bot.timestamp()} Smonk Online\n---`)
@@ -331,9 +394,9 @@ bot.on('message', (msg) => {
 	}
 })
 
-bot.on('guildMemberAdd', (guild, member) => {
+bot.on('guildMemberAdd', (member) => {
 	console.log(`${bot.timestamp()} user ${member.user.username} joined channel.`)
-	guild.channels.find('position',1).sendMessage(`Welcome to the unofficial Gamescape North Discord, ${member}!`);
+	member.guild.channels.find('position',1).sendMessage(`Welcome to the unofficial Gamescape North Discord, ${member}!`);
 })
 
 
