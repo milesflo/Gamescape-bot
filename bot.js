@@ -1,3 +1,5 @@
+'use strict';
+
 //This is the main script for the bot. To start the bot, run this script with node
 const Discord = require("discord.js");
 const discord_auth = require('./auth.json');
@@ -48,15 +50,15 @@ bot.timestamp = (msg) => {
 	return `[ ${new Date()} ] -`;
 }
 
-//return array of Google Calendar objects 
+//return Promise to resolve to array of Google Calendar event objects 
 bot.fetchTodayEvents = (calendarObj)=> {
-	return new Promise (function(resolve,reject) {
+	return new Promise ((resolve,reject) => {
 		let tomorrow = new Date(new Date().getTime() + 24 * 60 * 60 * 1000);
 		calendarObj.getEvents({
 			endDate: tomorrow.getTime()
 		},(err,events)=> {
 			if (err) return reject(err);
-			//chop down this astronomical array to length of 5, filter to see if it's today, then reverse it to be chronological.
+			//chop down this astronomical array to length of 5, filter to see if it's today, then reverse to chronological
 			let filtered = events.slice(0,4).filter(isToday).reverse();
 			return resolve(filtered);
 		})
@@ -64,27 +66,32 @@ bot.fetchTodayEvents = (calendarObj)=> {
 }
 
 bot.setTodayEvents = ()=> {
-		bot._today = []
-		var callstack = []
-		for (cal in bot._calendars) {
-			callstack.push(bot.fetchTodayEvents(bot._calendars[cal]))
-		}
-		Promise.all(callstack)
-		.then((allData)=> {
-			for (i in allData) {
-				if (allData[i].length>0) {
-					for ( j in allData[i] ) {
-						bot._today.push(allData[i][j])
-					}
+	//Clear bot property
+	bot._today = []
+
+	var callstack = []
+	//Create array of native Promises
+	for (let cal in bot._calendars) {
+		callstack.push(bot.fetchTodayEvents(bot._calendars[cal]))
+	}
+	//Resolve all Promises in callstack, passing 2D-array _allData_ of resolves from all Promises
+	Promise.all(callstack)
+	.then((allData)=> {
+		//Decompose 2d array, pushing all event objects to bot._today property
+		for (let i in allData) {
+			if (allData[i].length>0) {
+				for (let j in allData[i] ) {
+					bot._today.push(allData[i][j])
 				}
 			}
-			var date = new Date()
-			console.log(`Calendar set for ${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}`)
-		})
-		.catch((err)=> {
-			console.log(err);
-		})
-	}
+		}
+		var date = new Date()
+		console.log(`Calendar set for ${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`)
+	})
+	.catch((err)=> {
+		console.log(err);
+	})
+}
 
 const isToday = (eventObj) => {
 	return (new Date().toDateString() === new Date(eventObj.start).toDateString())
@@ -126,7 +133,7 @@ const commands = {
 	'help': {
 		process: (msg, arg) => {
 			let commandList = 'Available Commands:```'
-			for (cmd in commands) {
+			for (let cmd in commands) {
 				if (!commands[cmd].discrete) {
 					let command = prefix + cmd;
 					let usage = commands[cmd].usage;
@@ -224,7 +231,8 @@ const commands = {
 					});
 				});
 			}
-		}
+		},
+		discrete:true
 	},
 	'play': {
 		process: (msg) => {
@@ -326,14 +334,14 @@ const commands = {
 		description: "View music queue.",
 		discrete: true
 	},
-	'schedule': {
+	'cal': {
 		process: (msg, arg) => {
 			if (bot._today.length===0) {
 				// msg.channel.sendMessage("No events today.")
 			} else {
 				var date = new Date()
-				var response = `Calendar for ${date.getUTCMonth() + 1}/${date.getUTCDate()}/${date.getUTCFullYear()}:\`\`\``
-				for (i in bot._today) {
+				var response = `Calendar for ${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}:\`\`\``
+				for (let i in bot._today) {
 					response+=`\n${formatAMPM(new Date(bot._today[i].start))} ${bot._today[i].summary}`;
 				}
 				response+="```"
@@ -349,12 +357,13 @@ bot.login(discord_auth.token);
 
 bot._today;
 
+
 bot.on('ready', ()=> {
 	//Self-invoking function to collect Google Calendar files onload
 	(function fetchCalendarFiles(){
 		process.stdout.write("Fetching calendar files...");
 		bot._calendars = {}
-		for (id in calendar_ids) {
+		for (let id in calendar_ids) {
 			bot._calendars[id] = new PublicGoogleCalendar({ 
 				calendarId: calendar_ids[id]
 			});
@@ -366,7 +375,7 @@ bot.on('ready', ()=> {
 
 	bot.setTodayEvents()
 
-	var calRefreshJob = schedule.scheduleJob('* 0 * * *', function(){
+	var calRefreshJob = schedule.scheduleJob('* * 0 * * *', ()=>{
 		bot.setTodayEvents();
 	});
 
@@ -385,16 +394,14 @@ bot.on('message', (msg) => {
 	if(msg.author.bot||msg.system||msg.tts||msg.channel.type === 'dm'||!msg.content.startsWith(prefix)) return;
 	if(msg.content.startsWith(prefix)) {
 		//Trim the mention from the message and any whitespace
-		let command = msg.content.substring(msg.content.indexOf(prefix),msg.content.length).trim();
-		if (command.startsWith(prefix)) {
-			//Get command to execute
-			let to_execute = command.split(prefix).slice(1).join().split(' ')[0];
-			//Get string after command
-			let arg = command.split(prefix).slice(1).join().split(' ').slice(1).join(" ");
-			if (commands[to_execute]) {
-				commands[to_execute].process(msg, arg);
-			}
-		}
+		let command = msg.content.trim();
+		//Get command
+		let to_execute = command.split(' ')[0].slice(prefix.length);
+		//Get string after command
+		let arg = command.split(' ').slice(1).join(" ");
+
+		//If command exists, execute. Else, send warning that will be deleted in 3 seconds.
+		commands[to_execute] ? commands[to_execute].process(msg, arg) : msg.channel.sendMessage(`Command ${to_execute} not found.`).delete(3000);
 	}
 })
 
