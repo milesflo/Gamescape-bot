@@ -154,8 +154,8 @@ const commands = {
 	},
 	'roll': {
 		process: (msg, arg) => {
-			valid = arg.replace(/[^d0-9\s\+\*\\\-]/g, "");
-			output = d20.roll(valid, false);
+			var valid = arg.replace(/[^d0-9\s\+\*\\\-]/g, "");
+			var output = d20.roll(valid, false);
 			msg.reply(output);
 		},
 		usage: "<d20 syntax>",
